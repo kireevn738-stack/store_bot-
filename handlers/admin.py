@@ -13,7 +13,7 @@ router = Router()
 @router.message(Command("admin"))
 async def admin_command(message: Message):
     """Admin panel access"""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in settings.ADMIN_IDS=7200399252
         await message.answer("⛔ Access denied.")
         return
     
@@ -33,7 +33,7 @@ async def admin_command(message: Message):
 @router.message(Command("stats"))
 async def admin_stats(message: Message):
     """System statistics"""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in settings.ADMIN_IDS=7200399252
         await message.answer("⛔ Access denied.")
         return
     
@@ -73,7 +73,7 @@ async def admin_stats(message: Message):
 @router.message(Command("users"))
 async def list_all_users(message: Message):
     """List all registered users"""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in settings.ADMIN_IDS=7200399252
         await message.answer("⛔ Access denied.")
         return
     
@@ -108,7 +108,7 @@ async def list_all_users(message: Message):
 @router.message(Command("products_all"))
 async def list_all_products(message: Message):
     """List all products in system"""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in settings.ADMIN_IDS=7200399252
         await message.answer("⛔ Access denied.")
         return
     
@@ -137,7 +137,7 @@ async def list_all_products(message: Message):
 @router.message(Command("backup"))
 async def create_backup(message: Message):
     """Create database backup"""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in settings.ADMIN_IDS=7200399252
         await message.answer("⛔ Access denied.")
         return
     
@@ -157,7 +157,7 @@ async def create_backup(message: Message):
 @router.message(Command("cleanup"))
 async def cleanup_old_data(message: Message):
     """Clean old data"""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in settings.ADMIN_IDS=7200399252
         await message.answer("⛔ Access denied.")
         return
     
@@ -190,7 +190,7 @@ async def cleanup_old_data(message: Message):
 @router.message(Command("sendall"))
 async def send_broadcast(message: Message):
     """Send message to all users (admin only)"""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in settings.ADMIN_IDS=7200399252
         await message.answer("⛔ Access denied.")
         return
     
