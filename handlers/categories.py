@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.orm import Session
 
-from database import get_db, User, Category
+from database import get_db, User, Category, Product
 from keyboards.builders import (
     get_main_menu_keyboard, get_cancel_keyboard,
     get_categories_keyboard
@@ -114,7 +114,7 @@ async def process_category_name(message: Message, state: FSMContext):
     await state.clear()
 
 @router.callback_query(F.data.startswith("category_"))
-async def category_selected(callback: CallbackQuery, state: FSMContext):
+async def category_selected(callback: CallbackQuery):
     category_id = int(callback.data.split("_")[1])
     
     db: Session = next(get_db())
@@ -130,7 +130,7 @@ async def category_selected(callback: CallbackQuery, state: FSMContext):
     ).first()
     
     if not category:
-        await callback.answer("❌ Категория не найден")
+        await callback.answer("❌ Категория не найдена")
         return
     
     products = db.query(Product).filter(Product.category_id == category_id).all()
