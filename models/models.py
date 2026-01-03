@@ -1,11 +1,18 @@
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, validator, field_validator
+from pydantic import BaseModel, validator, field_validator
 from datetime import datetime
 
 class UserCreate(BaseModel):
     telegram_id: int
-    email: EmailStr
+    email: str
     language: str = "ru"
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        if '@' not in v or '.' not in v:
+            raise ValueError('Invalid email format')
+        return v
 
 class UserUpdate(BaseModel):
     language: Optional[str] = None
