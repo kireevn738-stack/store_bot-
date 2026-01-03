@@ -1,17 +1,17 @@
 import os
-from typing import Optional
-from pydantic_settings import BaseSettings
-from pydantic import EmailStr
+from dotenv import load_dotenv
 
+load_dotenv()
 
-class Settings(BaseSettings):
-    BOT_TOKEN: str
-    DATABASE_URL: str = "sqlite:///store_bot.db"
-    ADMIN_IDS: list[int] = []
-    DEFAULT_LANGUAGE: str = "en"
-    
-    class Config:
-        env_file = ".env"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(','))) if os.getenv("ADMIN_IDS") else []
 
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///store_bot.db")
 
-settings = Settings()
+# Supported languages
+LANGUAGES = {
+    'ru': '🇷🇺 Русский',
+    'en': '🇬🇧 English'
+}
+
+DEFAULT_LANGUAGE = 'ru'
