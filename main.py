@@ -1,35 +1,39 @@
 import asyncio
+import logging
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from database import create_tables
+import config
+from handlers import routers
 
-from config import settings
-from database import init_db
-from handlers.start import router as start_router
-from handlers.products import router as products_router
-from handlers.categories import router as categories_router
-from handlers.analytics import router as analytics_router
-
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 async def main():
-    # Initialize database
-    init_db()
+    # Create database tables
+    create_tables()
+    logger.info("Database tables created")
     
     # Initialize bot and dispatcher
-    bot = Bot(token=settings.8350573268:AAG3jFDklUBVHdz9gl2R5CeKRTJ68yl_JRI)
+    bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     
     # Include routers
-    dp.include_router(start_router)
-    dp.include_router(products_router)
-    dp.include_router(categories_router)
-    dp.include_router(analytics_router)
-    
-    print("🤖 Bot is starting...")
+    for router in routers:
+        dp.include_router(router)
     
     # Start polling
     await dp.start_polling(bot)
 
-
-if name == "main":
-    asyncio.run(main())
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped")
