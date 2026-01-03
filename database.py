@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, JSON, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -19,7 +19,6 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="user", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")
@@ -32,7 +31,6 @@ class Category(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     user = relationship("User", back_populates="categories")
     products = relationship("Product", back_populates="category", cascade="all, delete-orphan")
 
@@ -44,28 +42,42 @@ class Product(Base):
     quantity = Column(Integer, default=0)
     purchase_price = Column(Float)
     sale_price = Column(Float)
-    profit = Column(Float)
+    profit = Column(Float, default=0.0)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
     user = relationship("User", back_populates="products")
     category = relationship("Category", back_populates="products")
     order_items = relationship("OrderItem", back_populates="product")
+    
+    def calculate_profit(self):
+        """Вычисляет прибыль для товара"""
+        if self.sale_price is not None and self.purchase_price is not None:
+            self.profit = self.sale_price - self.purchase_price
+        return self.profit
+
+@event.listens_for(Product, 'before_update')
+def calculate_profit_before_update(mapper, connection, target):
+    """Автоматически вычисляет прибыль перед обновлением товара"""
+    target.calculate_profit()
+
+@event.listens_for(Product, 'before_insert')
+def calculate_profit_before_insert(mapper, connection, target):
+    """Автоматически вычисляет прибыль перед добавлением товара"""
+    target.calculate_profit()
 
 class Order(Base):
     __tablename__ = "orders"
     
     id = Column(Integer, primary_key=True, index=True)
     order_number = Column(String(50), unique=True)
-    total_amount = Column(Float)
-    total_profit = Column(Float)
+    total_amount = Column(Float, default=0.0)
+    total_profit = Column(Float, default=0.0)
     user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     user = relationship("User", back_populates="orders")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
@@ -77,11 +89,26 @@ class OrderItem(Base):
     product_id = Column(Integer, ForeignKey("products.id"))
     quantity = Column(Integer)
     price = Column(Float)
-    profit = Column(Float)
+    profit = Column(Float, default=0.0)
     
-    # Relationships
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
+    
+    def calculate_profit(self):
+        """Вычисляет прибыль для позиции заказа"""
+        if self.price is not None and self.product is not None:
+            self.profit = (self.price - self.product.purchase_price) * self.quantity
+        return self.profit
+
+@event.listens_for(OrderItem, 'before_update')
+def calculate_order_item_profit_before_update(mapper, connection, target):
+    """Автоматически вычисляет прибыль перед обновлением позиции заказа"""
+    target.calculate_profit()
+
+@event.listens_for(OrderItem, 'before_insert')
+def calculate_order_item_profit_before_insert(mapper, connection, target):
+    """Автоматически вычисляет прибыль перед добавлением позиции заказа"""
+    target.calculate_profit()
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
