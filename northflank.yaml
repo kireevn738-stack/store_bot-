@@ -1,0 +1,29 @@
+service:
+  name: telegram-bot
+  type: web
+  
+build:
+  method: python
+  pythonVersion: "3.11"
+  buildCommand: "pip install -r requirements.txt"
+  
+deploy:
+  replicas: 1
+  resources:
+    memory: 512Mi
+    cpu: 500m
+  port: 8080
+  healthCheck:
+    path: /
+    initialDelay: 30
+    period: 10
+  
+env:
+  - name: BOT_TOKEN
+    value: "8350573268:AAG3jFDklUBVHdz9gl2R5CeKRTJ68yl_JRI"
+  - name: ADMIN_IDS
+    value: "7200399252"
+  - name: DATABASE_URL
+    value: "sqlite:///store_bot.db"
+  - name: PORT
+    value: "8080"
