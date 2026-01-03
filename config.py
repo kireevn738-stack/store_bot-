@@ -14,3 +14,5 @@ LANGUAGES = {
 }
 
 DEFAULT_LANGUAGE = 'ru'
+
+PORT = int(os.getenv("PORT", 8080))
