@@ -293,7 +293,6 @@ async def confirm_no_price(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ProductStates.adding_sale_price)
     await callback.answer()
 
-# Редактирование товаров (основные функции)
 @router.callback_query(F.data.startswith("edit_product_"))
 async def edit_product_start(callback: CallbackQuery, state: FSMContext):
     product_id = int(callback.data.split("_")[2])
