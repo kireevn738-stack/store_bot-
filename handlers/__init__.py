@@ -17,3 +17,15 @@ routers = [
     orders_router,
     analytics_router
 ]
+
+__all__ = [
+    'start_router',
+    'registration_router',
+    'language_router',
+    'store_router',
+    'products_router',
+    'categories_router',
+    'orders_router',
+    'analytics_router',
+    'routers'
+]
