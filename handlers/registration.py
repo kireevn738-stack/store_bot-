@@ -3,7 +3,6 @@ from aiogram.types import Message, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.orm import Session
-import re
 
 from database import get_db, User
 from keyboards.builders import get_main_menu_keyboard, get_cancel_keyboard
@@ -26,7 +25,6 @@ async def process_language_selection(message: Message, state: FSMContext):
     
     await state.update_data(language=language)
     
-    # Ask for email
     if language == 'ru':
         text = "📧 Пожалуйста, введите ваш email:"
         cancel_text = "❌ Отмена"
@@ -60,7 +58,6 @@ async def process_email(message: Message, state: FSMContext):
         await message.answer(error_text)
         return
     
-    # Check if email already exists
     db: Session = next(get_db())
     existing_user = db.query(User).filter(User.email == email).first()
     
@@ -71,7 +68,6 @@ async def process_email(message: Message, state: FSMContext):
     
     await state.update_data(email=email)
     
-    # Ask for store name
     if language == 'ru':
         text = "🏪 Введите название вашего магазина:"
     else:
@@ -93,7 +89,6 @@ async def process_store_name(message: Message, state: FSMContext):
         await message.answer(error_text)
         return
     
-    # Create user
     db: Session = next(get_db())
     
     user = User(
@@ -106,7 +101,6 @@ async def process_store_name(message: Message, state: FSMContext):
     db.add(user)
     db.commit()
     
-    # Send success message
     if language == 'ru':
         success_text = f"""✅ Регистрация завершена!
 
