@@ -1,111 +1,115 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy.orm import Session
 
-from database import Category, get_db
-from states import CategoryStates
-from keyboards import get_categories_menu_keyboard
+from database import get_db, User, Category
+from keyboards.builders import (
+    get_main_menu_keyboard, get_cancel_keyboard,
+    get_categories_keyboard
+)
 
 router = Router()
 
+class CategoryStates(StatesGroup):
+    adding_name = State()
+    editing_name = State()
 
-@router.message(F.text.contains("📂") | F.text.contains("Categories") | 
-                F.text.contains("Категории") | F.text.contains("Категорії"))
-async def show_categories_menu(message: Message):
-    db = next(get_db())
+@router.message(F.text.in_(["📁 Категории", "📁 Categories"]))
+async def categories_menu(message: Message):
+    db: Session = next(get_db())
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
     
     if not user:
-        await message.answer("Please register first using /start")
         return
     
-    await message.answer(
-        "📂 Categories Management",
-        reply_markup=get_categories_menu_keyboard(user.language.value)
-    )
-
-
-@router.message(F.text.contains("➕ Add Category") | F.text.contains("➕ Добавить категорию") | 
-                F.text.contains("➕ Додати категорію"))
-async def start_add_category(message: Message, state: FSMContext):
-    db = next(get_db())
-    user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+    categories = db.query(Category).filter(Category.user_id == user.id).all()
     
-    if not user:
-        await message.answer("Please register first using /start")
-        return
-    
-    await message.answer(
-        "📝 Enter category name:",
-        reply_markup=None
-    )
-    await state.set_state(CategoryStates.waiting_for_name)
-
-
-@router.message(CategoryStates.waiting_for_name)
-async def process_category_name(message: Message, state: FSMContext):
-    category_name = message.text.strip()
-    if len(category_name) < 2:
-        await message.answer("❌ Category name is too short. Please enter a valid name:")
-        return
-    
-    await state.update_data(name=category_name)
-    await message.answer("📄 Enter description or 'skip':")
-    await state.set_state(CategoryStates.waiting_for_description)
-
-
-@router.message(CategoryStates.waiting_for_description)
-async def process_category_description(message: Message, state: FSMContext):
-    description = message.text.strip()
-    
-    if description.lower() == 'skip':
-        await state.update_data(description=None)
+    if user.language == 'ru':
+        if not categories:
+            text = "📁 У вас пока нет категорий.\n\nЧтобы добавить категорию, нажмите 'Добавить категорию'"
+        else:
+            text = f"📁 Ваши категории ({len(categories)}):\n\n"
+            for idx, category in enumerate(categories, 1):
+                product_count = len(category.products)
+                text += f"{idx}. {category.name} ({product_count} товаров)\n"
     else:
-        await state.update_data(description=description)
+        if not categories:
+            text = "📁 You have no categories yet.\n\nTo add a category, click 'Add category'"
+        else:
+            text = f"📁 Your categories ({len(categories)}):\n\n"
+            for idx, category in enumerate(categories, 1):
+                product_count = len(category.products)
+                text += f"{idx}. {category.name} ({product_count} products)\n"
     
+    await message.answer(
+        text,
+        reply_markup=get_categories_keyboard(categories, user.language)
+    )
+
+@router.callback_query(F.data == "add_category")
+async def add_category_callback(callback: CallbackQuery, state: FSMContext):
+    db: Session = next(get_db())
+    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+    
+    if not user:
+        return
+    
+    if user.language == 'ru':
+        text = "📝 Введите название категории:"
+        cancel_text = "❌ Отмена"
+    else:
+        text = "📝 Enter category name:"
+        cancel_text = "❌ Cancel"
+    
+    await callback.message.answer(
+        text,
+        reply_markup=get_cancel_keyboard(user.language)
+    )
+    await state.set_state(CategoryStates.adding_name)
+    await state.update_data(language=user.language)
+    await callback.answer()
+
+@router.message(CategoryStates.adding_name)
+async def process_category_name(message: Message, state: FSMContext):
     data = await state.get_data()
+    language = data.get('language', 'ru')
     
-    db = next(get_db())
+    if message.text == ("❌ Отмена" if language == 'ru' else "❌ Cancel"):
+        await state.clear()
+        await message.answer(
+            "🚫 Добавление категории отменено" if language == 'ru' else "🚫 Category addition cancelled",
+            reply_markup=get_main_menu_keyboard(language)
+        )
+        return
+    
+    category_name = message.text.strip()
+    
+    if len(category_name) < 2:
+        error_text = "❌ Название должно содержать минимум 2 символа:" if language == 'ru' else "❌ Name must be at least 2 characters:"
+        await message.answer(error_text)
+        return
+    
+    # Create category
+    db: Session = next(get_db())
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
     
     category = Category(
-        user_id=user.id,
-        name=data['name'],
-        description=data.get('description')
+        name=category_name,
+        user_id=user.id
     )
     
     db.add(category)
     db.commit()
     
-    response = f"✅ Category '{category.name}' added successfully!"
-    if category.description:
-        response += f"\n📄 Description: {category.description}"
+    if language == 'ru':
+        success_text = f"✅ Категория '{category_name}' успешно добавлена!"
+    else:
+        success_text = f"✅ Category '{category_name}' successfully added!"
     
-    await message.answer(response, reply_markup=get_categories_menu_keyboard(user.language.value))
+    await message.answer(
+        success_text,
+        reply_markup=get_main_menu_keyboard(language)
+    )
     await state.clear()
-
-
-@router.message(F.text.contains("📋 List Categories") | F.text.contains("Список категорий") | 
-                F.text.contains("Список категорій"))
-async def list_categories(message: Message):
-    db = next(get_db())
-    user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
-    
-    if not user:
-        await message.answer("Please register first using /start")
-        return
-    
-    categories = db.query(Category).filter(Category.user_id == user.id).all()
-    
-    if not categories:
-        await message.answer("📭 No categories found.")
-        return
-    
-    response = "📂 Your Categories:\n\n"
-    for category in categories:
-        response += f"📁 {category.name}"
-        if category.description:
-            response += f" - {category.description}"
-        response += "\n"
-    
-    await message.answer(response)
