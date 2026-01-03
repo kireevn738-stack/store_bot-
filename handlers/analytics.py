@@ -1,114 +1,194 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
 from datetime import datetime, timedelta
 
-from database import Product, Transaction, TransactionType, get_db
-from states import AnalyticsStates
-from keyboards import get_analytics_period_keyboard
+from database import get_db, User, Order, Product
+from keyboards.builders import (
+    get_main_menu_keyboard, get_analytics_period_keyboard,
+    get_cancel_keyboard
+)
 
 router = Router()
 
+class AnalyticsStates(StatesGroup):
+    selecting_period = State()
+    custom_period_start = State()
+    custom_period_end = State()
 
-@router.message(F.text.contains("📊") | F.text.contains("Analytics") | 
-                F.text.contains("Аналитика") | F.text.contains("Аналітика"))
-async def show_analytics_menu(message: Message):
-    db = next(get_db())
+@router.message(F.text.in_(["📊 Аналитика", "📊 Analytics"]))
+async def analytics_menu(message: Message, state: FSMContext):
+    db: Session = next(get_db())
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
     
     if not user:
-        await message.answer("Please register first using /start")
         return
     
+    if user.language == 'ru':
+        text = "📊 Выберите период для анализа:"
+    else:
+        text = "📊 Select period for analytics:"
+    
     await message.answer(
-        "📊 Select analytics period:",
-        reply_markup=get_analytics_period_keyboard(user.language.value)
+        text,
+        reply_markup=get_analytics_period_keyboard(user.language)
     )
-    await state.set_state(AnalyticsStates.waiting_for_period_type)
+    await state.set_state(AnalyticsStates.selecting_period)
+    await state.update_data(language=user.language)
 
-
-@router.message(AnalyticsStates.waiting_for_period_type)
-async def process_analytics_period(message: Message, state: FSMContext):
-    db = next(get_db())
-    user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+@router.callback_query(F.data.startswith("analytics_"), AnalyticsStates.selecting_period)
+async def process_period_selection(callback: CallbackQuery, state: FSMContext):
+    period = callback.data.split("_")[1]
+    data = await state.get_data()
+    language = data.get('language', 'ru')
     
-    period_text = message.text
-    now = datetime.utcnow()
+    db: Session = next(get_db())
+    user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
     
-    if "Today" in period_text or "Сегодня" in period_text or "Сьогодні" in period_text:
+    now = datetime.now()
+    
+    # Define time ranges
+    if period == 'day':
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = now
-    elif "Week" in period_text or "Неделя" in period_text or "Тиждень" in period_text:
+    elif period == 'week':
         start_date = now - timedelta(days=now.weekday())
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = now
-    elif "Month" in period_text or "Месяц" in period_text or "Місяць" in period_text:
+    elif period == 'month':
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end_date = now
-    elif "Year" in period_text or "Год" in period_text or "Рік" in period_text:
+    elif period == 'year':
         start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         end_date = now
-    elif "All" in period_text or "Все" in period_text or "Весь" in period_text:
-        start_date = datetime(2000, 1, 1)  # Very old date
+    elif period == 'all':
+        start_date = None
         end_date = now
-    elif "Back" in period_text or "Назад" in period_text:
-        await message.answer(
-            "Main menu",
-            reply_markup=get_main_menu_keyboard(user.language.value)
-        )
-        await state.clear()
-        return
-    else:
-        await message.answer("Please select a valid period:")
-        return
-    
-    # Calculate analytics
-    products = db.query(Product).filter(
-        Product.user_id == user.id,
-        Product.created_at >= start_date,
-        Product.created_at <= end_date
-    ).all()
-    
-    transactions = db.query(Transaction).filter(
-        Transaction.user_id == user.id,
-        Transaction.created_at >= start_date,
-        Transaction.created_at <= end_date
-    ).all()
-    
-    # Calculate totals
-    total_purchases = sum(t.total_amount for t in transactions if t.transaction_type == TransactionType.PURCHASE)
-    total_sales = sum(t.total_amount for t in transactions if t.transaction_type == TransactionType.SALE)
-    total_profit = total_sales - total_purchases
-    
-    total_inventory_value = sum(p.purchase_price * p.quantity for p in products)
-    potential_profit = sum((p.sale_price - p.purchase_price) * p.quantity for p in products)
-    
-    # Generate report
-    report = (
-        f"📊 Analytics Report\n"
-        f"Period: {period_text}\n"
-        f"Store: {user.store_name}\n"
-        f"Date: {now.strftime('%Y-%m-%d %H:%M')}\n\n"
-        f"💰 Financial Summary:\n"
-        f"• Total Purchases: ${total_purchases:.2f}\n"
-        f"• Total Sales: ${total_sales:.2f}\n"
-        f"• Net Profit: ${total_profit:.2f}\n\n"f"📦 Inventory Summary:\n"
-        f"• Total Products: {len(products)}\n"
-        f"• Inventory Value: ${total_inventory_value:.2f}\n"
-        f"• Potential Profit: ${potential_profit:.2f}\n\n"
+    elif period == 'custom':
+        if language == 'ru':
+            text = "📅 Введите начальную дату (формат: ДД.ММ.ГГГГ):"
+        else:
+            text = "📅 Enter start date (format: DD.MM.YYYY):"
         
-        f"📈 Performance Indicators:\n"
-        f"• Profit Margin: {(total_profit / total_sales * 100 if total_sales > 0 else 0):.1f}%\n"
-        f"• ROI: {(total_profit / total_purchases * 100 if total_purchases > 0 else 0):.1f}%"
-    )
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_cancel_keyboard(language)
+        )
+        await state.set_state(AnalyticsStates.custom_period_start)
+        await callback.answer()
+        return
     
-    # Add top products if available
-    if products:
-        top_products = sorted(products, key=lambda p: (p.sale_price - p.purchase_price) * p.quantity, reverse=True)[:5]
-        report += "\n\n🏆 Top 5 Products by Potential Profit:\n"
-        for i, product in enumerate(top_products, 1):
-            profit = (product.sale_price - product.purchase_price) * product.quantity
-            report += f"{i}. {product.name}: ${profit:.2f}\n"
-    
-    await message.answer(report, reply_markup=get_main_menu_keyboard(user.language.value))
+    # Get analytics data
+    await show_analytics(callback.message, user.id, start_date, end_date, language)
     await state.clear()
+    await callback.answer()
+
+@router.message(AnalyticsStates.custom_period_start)
+async def process_custom_start_date(message: Message, state: FSMContext):
+    data = await state.get_data()
+    language = data.get('language', 'ru')
+    
+    if message.text == ("❌ Отмена" if language == 'ru' else "❌ Cancel"):
+        await state.clear()
+        await message.answer(
+            "🚫 Аналитика отменена" if language == 'ru' else "🚫 Analytics cancelled",
+            reply_markup=get_main_menu_keyboard(language)
+        )
+        return
+    
+    try:
+        start_date = datetime.strptime(message.text.strip(), '%d.%m.%Y')
+        await state.update_data(start_date=start_date)
+        
+        if language == 'ru':
+            text = "📅 Введите конечную дату (формат: ДД.ММ.ГГГГ):"
+        else:
+            text = "📅 Enter end date (format: DD.MM.YYYY):"
+        
+        await message.answer(text)
+        await state.set_state(AnalyticsStates.custom_period_end)
+    except ValueError:
+        if language == 'ru':
+            error_text = "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ:"
+        else:
+            error_text = "❌ Invalid date format. Use DD.MM.YYYY:"
+        
+        await message.answer(error_text)
+
+@router.message(AnalyticsStates.custom_period_end)
+async def process_custom_end_date(message: Message, state: FSMContext):
+    data = await state.get_data()
+    language = data.get('language', 'ru')
+    start_date = data.get('start_date')
+    
+    try:
+        end_date = datetime.strptime(message.text.strip(), '%d.%m.%Y')
+        end_date = end_date.replace(hour=23, minute=59, second=59)
+        
+        db: Session = next(get_db())
+        user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+        
+        await show_analytics(message, user.id, start_date, end_date, language)
+        await state.clear()
+    except ValueError:
+        if language == 'ru':
+            error_text = "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ:"
+        else:
+            error_text = "❌ Invalid date format. Use DD.MM.YYYY:"
+        
+        await message.answer(error_text)
+
+async def show_analytics(message: Message, user_id: int, start_date: datetime, end_date: datetime, language: str):
+    db: Session = next(get_db())
+    
+    # Build query for orders
+    query = db.query(Order).filter(Order.user_id == user_id)
+    
+    if start_date:
+        query = query.filter(Order.created_at >= start_date)
+    
+    if end_date:
+        query = query.filter(Order.created_at <= end_date)
+    
+    orders = query.all()
+    
+    # Calculate metrics
+    total_orders = len(orders)
+    total_amount = sum(order.total_amount for order in orders)
+    total_profit = sum(order.total_profit for order in orders)
+    
+    # Calculate total products sold
+    total_items_sold = 0
+    for order in orders:
+        for item in order.items:
+            total_items_sold += item.quantity
+    
+    # Get total expenses (purchase costs of sold items)
+    total_expenses = 0
+    for order in orders:
+        for item in order.items:
+            product = item.product
+            total_expenses += item.quantity * product.purchase_price
+    
+    # Get current inventory value
+    current_products = db.query(Product).filter(Product.user_id == user_id).all()
+    inventory_value = sum(product.quantity * product.purchase_price for product in current_products)
+    inventory_items = sum(product.quantity for product in current_products)
+    
+    # Format date range text
+    if start_date and end_date:
+        date_range = f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+    elif start_date:
+        date_range = f"с {start_date.strftime('%d.%m.%Y')}"
+    else:
+        date_range = "за все время"
+    
+    if language == 'ru':
+        text = f"""📊 Аналитика магазина ({date_range}):
+
+📈 Продажи:
+├─ 📦 Заказов: {total_orders}
+├─ 🛍️ Товаров продано: {total_items_s
