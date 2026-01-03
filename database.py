@@ -53,19 +53,16 @@ class Product(Base):
     order_items = relationship("OrderItem", back_populates="product")
     
     def calculate_profit(self):
-        """Вычисляет прибыль для товара"""
         if self.sale_price is not None and self.purchase_price is not None:
             self.profit = self.sale_price - self.purchase_price
         return self.profit
 
 @event.listens_for(Product, 'before_update')
 def calculate_profit_before_update(mapper, connection, target):
-    """Автоматически вычисляет прибыль перед обновлением товара"""
     target.calculate_profit()
 
 @event.listens_for(Product, 'before_insert')
 def calculate_profit_before_insert(mapper, connection, target):
-    """Автоматически вычисляет прибыль перед добавлением товара"""
     target.calculate_profit()
 
 class Order(Base):
@@ -95,19 +92,16 @@ class OrderItem(Base):
     product = relationship("Product", back_populates="order_items")
     
     def calculate_profit(self):
-        """Вычисляет прибыль для позиции заказа"""
         if self.price is not None and self.product is not None:
             self.profit = (self.price - self.product.purchase_price) * self.quantity
         return self.profit
 
 @event.listens_for(OrderItem, 'before_update')
 def calculate_order_item_profit_before_update(mapper, connection, target):
-    """Автоматически вычисляет прибыль перед обновлением позиции заказа"""
     target.calculate_profit()
 
 @event.listens_for(OrderItem, 'before_insert')
 def calculate_order_item_profit_before_insert(mapper, connection, target):
-    """Автоматически вычисляет прибыль перед добавлением позиции заказа"""
     target.calculate_profit()
 
 def create_tables():
