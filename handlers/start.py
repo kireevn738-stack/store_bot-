@@ -14,14 +14,12 @@ async def cmd_start(message: Message):
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
     
     if user:
-        # User exists, show main menu
         from handlers.language import get_main_menu_text
         await message.answer(
             get_main_menu_text(user.language),
             reply_markup=get_main_menu_keyboard(user.language)
         )
     else:
-        # New user, ask for language
         await message.answer(
             "🌍 Please choose your language / Пожалуйста, выберите ваш язык:",
             reply_markup=get_language_keyboard()
