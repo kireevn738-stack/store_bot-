@@ -1,103 +1,90 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, Enum
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
-import enum
+import config
 
+engine = create_engine(config.DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-engine = create_engine("sqlite:///store_bot.db")
-SessionLocal = sessionmaker(bind=engine)
-
-
-class UserLanguage(str, enum.Enum):
-    ENGLISH = "en"
-    RUSSIAN = "ru"
-    UKRAINIAN = "uk"
-
 
 class User(Base):
-    tablename = "users"
+    __tablename__ = "users"
     
-    id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    language = Column(Enum(UserLanguage), default=UserLanguage.ENGLISH)
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(Integer, unique=True, index=True)
+    email = Column(String(255), unique=True, index=True)
+    language = Column(String(2), default=config.DEFAULT_LANGUAGE)
     store_name = Column(String(255))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    categories = relationship("Category", back_populates="user")
-    products = relationship("Product", back_populates="user")
-    transactions = relationship("Transaction", back_populates="user")
-
+    # Relationships
+    categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
+    products = relationship("Product", back_populates="user", cascade="all, delete-orphan")
+    orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")
 
 class Category(Base):
-    tablename = "categories"
+    __tablename__ = "categories"
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    name = Column(String(255), nullable=False)
-    description = Column(Text)
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255))
+    user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # Relationships
     user = relationship("User", back_populates="categories")
-    products = relationship("Product", back_populates="category")
-
+    products = relationship("Product", back_populates="category", cascade="all, delete-orphan")
 
 class Product(Base):
-    tablename = "products"
+    __tablename__ = "products"
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
-    name = Column(String(255), nullable=False)
-    purchase_price = Column(Float, nullable=False)
-    sale_price = Column(Float, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255))
     quantity = Column(Integer, default=0)
-    sku = Column(String(100), unique=True)
-    description = Column(Text)
+    purchase_price = Column(Float)
+    sale_price = Column(Float)
+    profit = Column(Float)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relationships
     user = relationship("User", back_populates="products")
     category = relationship("Category", back_populates="products")
-    transactions = relationship("Transaction", back_populates="product")
+    order_items = relationship("OrderItem", back_populates="product")
+
+class Order(Base):
+    __tablename__ = "orders"
     
-    @property
-    def profit_per_unit(self):
-        return self.sale_price - self.purchase_price
-    
-    @property
-    def total_profit(self):
-        return self.profit_per_unit * self.quantity
-
-
-class TransactionType(str, enum.Enum):
-    PURCHASE = "purchase"  # Buying for stock
-    SALE = "sale"          # Selling to customer
-    ADJUSTMENT = "adjustment"
-
-
-class Transaction(Base):
-    tablename = "transactions"
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    transaction_type = Column(Enum(TransactionType), nullable=False)
-    quantity = Column(Integer, nullable=False)
-    price = Column(Float, nullable=False)
-    total_amount = Column(Float, nullable=False)
-    notes = Column(Text)
+    id = Column(Integer, primary_key=True, index=True)
+    order_number = Column(String(50), unique=True)
+    total_amount = Column(Float)
+    total_profit = Column(Float)
+    user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    user = relationship("User", back_populates="transactions")
-    product = relationship("Product", back_populates="transactions")
+    # Relationships
+    user = relationship("User", back_populates="orders")
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
+class OrderItem(Base):
+    __tablename__ = "order_items"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"))
+    product_id = Column(Integer, ForeignKey("products.id"))
+    quantity = Column(Integer)
+    price = Column(Float)
+    profit = Column(Float)
+    
+    # Relationships
+    order = relationship("Order", back_populates="items")
+    product = relationship("Product", back_populates="order_items")
 
-def init_db():
+def create_tables():
     Base.metadata.create_all(bind=engine)
-
 
 def get_db():
     db = SessionLocal()
